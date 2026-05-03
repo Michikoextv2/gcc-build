@@ -14,8 +14,11 @@ env:
       CHAT_ID: ${{ secrets.CHAT }}
 
 jobs:
-  build-arm64-tc:
+  build-toolchain:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [arm64, arm]
 
     steps:
     - uses: actions/checkout@v6
@@ -31,60 +34,30 @@ jobs:
     - name: Build
       run: |
         chmod a+x build-*.sh
-        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" -d chat_id="${CHAT_ID}" -d "disable_web_page_preview=true" -d "parse_mode=html" -d text="<b>Starting ARM64 GCC Build</b>"
-        ./build-gcc.sh -a arm64
-        ./build-lld.sh -a arm64
+        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" -d chat_id="${CHAT_ID}" -d "disable_web_page_preview=true" -d "parse_mode=html" -d text="<b>Starting ${{ matrix.arch }} GCC Build</b>"
+        ./build-gcc.sh -a ${{ matrix.arch }}
+        ./build-lld.sh -a ${{ matrix.arch }}
         script_dir=$(pwd)
-        cd gcc-arm64
-        ./bin/aarch64-elf-gcc -v 2>&1 | tee ../gcc-version
-        ./bin/aarch64-elf-ld.lld -v 2>&1 | tee ../lld-arm64-version
-        bash "$script_dir/strip-binaries.sh"
-        cd ../ && cat lld-arm64-version >> gcc-version
-    - name: Create tarball
-      run: |
-        tar -cvf eva-gcc-arm64-$(/bin/date -u '+%d%m%Y').xz gcc-arm64/*
-
-    - uses: actions/upload-artifact@main
-      with:
-       name: aarch64-tarball
-       path: |
-         *.xz
-         gcc-version
-
-  build-arm-tc:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v6
-    - name: Set build date
-      id: get-date
-      run: |
-        sudo ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime
-        echo ::set-output name=date::$(/bin/date -u "+%Y%m%d")
-    - name: Setup
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y flex bison ncurses-dev texinfo gcc gperf patch libtool automake g++ libncurses5-dev gawk subversion expat libexpat1-dev binutils-dev bc libcap-dev autoconf libgmp-dev build-essential pkg-config libmpc-dev libmpfr-dev autopoint gettext txt2man liblzma-dev libssl-dev libz-dev mercurial wget tar cmake zstd ninja-build lz4 liblz4-tool liblz4-dev lzma libc6-dev-i386 --fix-broken --fix-missing
-    - name: Build
-      run: |
-        chmod a+x build-*.sh
-        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" -d chat_id="${CHAT_ID}" -d "disable_web_page_preview=true" -d "parse_mode=html" -d text="<b>Starting ARM (32-bit) GCC Build</b>"
-        ./build-gcc.sh -a arm
-        ./build-lld.sh -a arm
-        script_dir=$(pwd)
+        if [ "${{ matrix.arch }}" == "arm64" ]; then
+            cd gcc-arm64
+            ./bin/aarch64-elf-gcc -v 2>&1 | tee ../gcc-version
+            ./bin/aarch64-elf-ld.lld -v 2>&1 | tee ../lld-arm64-version
+            cd ../ && cat lld-arm64-version >> gcc-version
+        fi
         bash "$script_dir/strip-binaries.sh"
     - name: Create tarball
       run: |
-        tar -cvf eva-gcc-arm-$(/bin/date -u '+%d%m%Y').xz gcc-arm/*
+        tar -cvf eva-gcc-${{ matrix.arch }}-$(/bin/date -u '+%d%m%Y').xz gcc-${{ matrix.arch }}/*
 
     - uses: actions/upload-artifact@main
       with:
-       name: arm-tarball
+       name: ${{ matrix.arch }}-tarball
        path: |
          *.xz
+         gcc-version*
 
   publish-release:
-      needs: [build-arm64-tc,build-arm-tc]
+      needs: [build-toolchain]
       runs-on: ubuntu-latest
 
       steps:
