@@ -10,14 +10,14 @@ This repository contains the script needed to compile bare metal GCC for various
 
 * **Ubuntu or other Debian based distros**
 
-    To install and set GCC 10 as the default compiler, you need to:
+    To install and set latest GCC as the default compiler, you need to:
 
     ```bash
     sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y && sudo apt-get update
     ```
 
     ```bash
-    sudo apt-get install flex bison ncurses-dev texinfo gcc gperf patch libtool automake g++ libncurses5-dev gawk subversion expat libexpat1-dev python-all-dev binutils-dev bc libcap-dev autoconf libgmp-dev build-essential pkg-config libmpc-dev libmpfr-dev autopoint gettext txt2man liblzma-dev libssl-dev libz-dev mercurial wget tar gcc-10 g++-10 zstd --fix-broken --fix-missing
+    sudo apt-get install flex bison ncurses-dev texinfo gcc gperf patch libtool automake g++ libncurses5-dev gawk subversion expat libexpat1-dev python-all-dev binutils-dev bc libcap-dev autoconf libgmp-dev build-essential pkg-config libmpc-dev libmpfr-dev autopoint gettext txt2man liblzma-dev libssl-dev libz-dev mercurial wget tar zstd --fix-broken --fix-missing
     ```
 
 * **Arch Linux**
