@@ -91,6 +91,7 @@ jobs:
           retention-days: 1
 
   build-toolchain:
+    needs: [train]
     runs-on: ubuntu-latest
     strategy:
       matrix:
