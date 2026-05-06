@@ -14,6 +14,82 @@ env:
       CHAT_ID: ${{ secrets.CHAT }}
 
 jobs:
+  instrument:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [arm64, arm]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flex bison ncurses-dev texinfo gcc gperf patch libtool automake g++ libncurses5-dev gawk subversion expat libexpat1-dev binutils-dev bc libcap-dev autoconf libgmp-dev build-essential pkg-config libmpc-dev libmpfr-dev autopoint gettext txt2man liblzma-dev libssl-dev libz-dev mercurial wget tar cmake zstd ninja-build lz4 liblz4-tool liblz4-dev lzma libc6-dev-i386 --fix-broken --fix-missing
+
+      - name: Build Instrumented GCC
+        run: |
+          chmod a+x build-*.sh
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" -d chat_id="${CHAT_ID}" -d "disable_web_page_preview=true" -d "parse_mode=html" -d text="<b>Starting ${{ matrix.arch }} Build for Instrumentation</b>"
+          ./build-gcc.sh -a ${{ matrix.arch }} -p instrument
+
+      - name: Upload Instrumented Toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcc-instrumented-${{ matrix.arch }}
+          path: gcc-${{ matrix.arch }}/
+          retention-days: 1
+
+  train:
+    needs: instrument
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [arm64, arm]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download Instrumented Toolchain
+        uses: actions/download-artifact@v4
+        with:
+          name: gcc-instrumented-${{ matrix.arch }}
+          path: gcc-${{ matrix.arch }}
+
+      - name: Setup Toolchain Permissions
+        run: chmod -R +x gcc-${{ matrix.arch }}/bin/
+
+      - name: Checkout Training Target (Linux Kernel)
+        uses: actions/checkout@v6
+        with:
+          repository: torvalds/linux
+          ref: master
+          depth: 1
+          path: train-kernel
+
+      - name: Train Compiler
+        working-directory: train-kernel
+        run: |
+          export PATH="$GITHUB_WORKSPACE/gcc-${{ matrix.arch }}/bin:$PATH"
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            KARCH="arm64"
+            CROSS="aarch64-elf-"
+          else
+            KARCH="arm"
+            CROSS="arm-eabi-"
+          fi
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" -d chat_id="${CHAT_ID}" -d "disable_web_page_preview=true" -d "parse_mode=html" -d text="<b>Instrumenting ${{ matrix.arch }} toolchain</b>"
+          make ARCH=$KARCH CROSS_COMPILE=$CROSS defconfig
+          make ARCH=$KARCH CROSS_COMPILE=$CROSS -j$(nproc) || true
+
+      - name: Upload PGO Profiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: pgo-profiles-${{ matrix.arch }}
+          path: pgo-profiles-${{ matrix.arch }}/
+          retention-days: 1
+
   build-toolchain:
     runs-on: ubuntu-latest
     strategy:
@@ -31,11 +107,16 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y flex bison ncurses-dev texinfo gcc gperf patch libtool automake g++ libncurses5-dev gawk subversion expat libexpat1-dev binutils-dev bc libcap-dev autoconf libgmp-dev build-essential pkg-config libmpc-dev libmpfr-dev autopoint gettext txt2man liblzma-dev libssl-dev libz-dev mercurial wget tar cmake zstd ninja-build lz4 liblz4-tool liblz4-dev lzma libc6-dev-i386 --fix-broken --fix-missing
+    - name: Download PGO Profiles
+      uses: actions/download-artifact@v4
+      with:
+        name: pgo-profiles-${{ matrix.arch }}
+        path: pgo-profiles-${{ matrix.arch }}
     - name: Build
       run: |
         chmod a+x build-*.sh
         curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" -d chat_id="${CHAT_ID}" -d "disable_web_page_preview=true" -d "parse_mode=html" -d text="<b>Starting ${{ matrix.arch }} GCC Build</b>"
-        ./build-gcc.sh -a ${{ matrix.arch }}
+        ./build-gcc.sh -a ${{ matrix.arch }} -p optimize
         ./build-lld.sh -a ${{ matrix.arch }}
         script_dir=$(pwd)
         if [ "${{ matrix.arch }}" == "arm64" ]; then
