@@ -14,6 +14,7 @@ JOBS=$(nproc --all)
 while getopts a: flag; do
   case "${flag}" in
     a) arch=${OPTARG} ;;
+    p) PHASE=${OPTARG} ;;
     *) echo "Invalid argument passed" && exit 1 ;;
   esac
 done
@@ -26,10 +27,27 @@ case "${arch}" in
   "x86") TARGET="x86_64-elf" ;;
 esac
 
+# PGO Setup
+export PGO_DIR="${PWD}/pgo-profiles-${arch}"
+
+if [ "$PHASE" == "instrument" ]; then
+    mkdir -p "$PGO_DIR"
+    export PGO_FLAGS="-fprofile-generate=${PGO_DIR}"
+    echo ">>> Running in INSTRUMENT phase. PGO data will go to: $PGO_DIR"
+
+elif [ "$PHASE" == "optimize" ]; then
+    export PGO_FLAGS="-fprofile-use=${PGO_DIR} -fprofile-correction -Wno-error"
+    echo ">>> Running in OPTIMIZE phase. Using PGO data from: $PGO_DIR"
+
+else
+    export PGO_FLAGS=""
+    echo ">>> Running in NORMAL phase (No PGO)."
+fi
+
 export WORK_DIR="$PWD"
 export PREFIX="$WORK_DIR/gcc-${arch}"
 export PATH="$PREFIX/bin:/usr/bin/core_perl:$PATH"
-export OPT_FLAGS="-flto -flto-compression-level=10 -O3 -pipe -ffunction-sections -fdata-sections"
+export OPT_FLAGS="-flto -flto-compression-level=10 -O3 -pipe -ffunction-sections -fdata-sections $PGO_FLAGS"
 
 echo "Cleaning up previously cloned repos..."
 rm -rf "$WORK_DIR"/{binutils,build-binutils,build-gcc,gcc}
@@ -104,11 +122,20 @@ build_gcc() {
     --with-pkgversion="Eva GCC" \
     --with-sysroot
 
-  make all-gcc -j"$JOBS"
-  make all-target-libgcc -j"$JOBS"
-  make install-gcc -j"$JOBS"
-  make install-target-libgcc -j"$JOBS"
-  echo "Built GCC!"
+if [ "$PHASE" == "instrument" ]; then
+    echo "Building GCC (Instrumented phase - skipping target libs)"
+    make all-gcc -j"$JOBS"
+    make install-gcc -j"$JOBS"
+    echo "Built GCC for profiling"
+else
+    # If we are in the optimize or normal phase, build EVERYTHING!
+    echo "Building GCC (Final phase - including target libs)"
+    make all-gcc -j"$JOBS"
+    make all-target-libgcc -j"$JOBS"
+    make install-gcc -j"$JOBS"
+    make install-target-libgcc -j"$JOBS"
+    echo "Built GCC!"
+fi
 }
 
 download_resources
