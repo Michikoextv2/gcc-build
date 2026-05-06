@@ -71,7 +71,7 @@ jobs:
           run: echo "TAG_NAME='$(date -u +%d%m%Y)'" >> $GITHUB_ENV
         - name: Create Release
           run: |
-            gh release create ${{ env.TAG_NAME }} -F aarch64-tarball/gcc-version */*.xz
+            gh release create ${{ env.TAG_NAME }} -F arm64-tarball/gcc-version */*.xz
 
   send-day:
     needs: [publish-release]
