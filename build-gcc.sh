@@ -11,7 +11,7 @@ echo "*****************************************"
 JOBS=$(nproc --all)
 
 # TODO: Add more dynamic option handling
-while getopts a: flag; do
+while getopts a:p: flag; do
   case "${flag}" in
     a) arch=${OPTARG} ;;
     p) PHASE=${OPTARG} ;;
